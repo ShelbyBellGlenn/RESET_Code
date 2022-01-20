@@ -1,0 +1,84 @@
+#load packages
+library(quadprog)
+
+#load functions and libraries
+load("Reference Data for IDOL.RData")  # reference data
+source("UnsupervisedOptimalDMRFinderV3.R")
+source("IDOL revised functions 02_19_2017.R")
+source("multiRegMultistat.R")
+load("Legacy72.RData")
+load("Optimal set of 72 CpGs.RData")
+
+
+#get mean methylation matrix, calculate from the reference betas matrix
+uniquecelltypes <- c("CD4T", "CD8T", "NK", "Bcell", "Mono", "Gran")
+keep <- which(referencePd$CellType %in% uniquecelltypes)
+referencePd.sub <- referencePd[keep,]
+RefBetas <- referenceBetas[,keep]
+meanmeth = matrix(NA, nrow = 485512, ncol = 6)
+rownames(meanmeth) = rownames(RefBetas)
+colnames(meanmeth) = uniquecelltypes
+for(k in 1:6) {
+  ind = which(referencePd.sub$CellType %in% uniquecelltypes[k])
+  meanmeth[,k] = apply(RefBetas[,ind], 1, mean, na.rm = T)
+}
+
+
+#########################################################################
+#Feinberg analysis with library size of 120
+#########################################################################
+load("ObjectsForFeinberg.RData")
+
+###########################
+#Using modified DSC library
+###########################
+
+#subset feinberg data to our library
+DSCOptimFein <- dat[library72,]
+
+#subset mean methylation matrix to our library
+DSCmeanmethFein <- meanmeth[library72,]
+
+#get cell proportion estimates
+cellTypes = colnames(DSCmeanmethFein)
+Lwbc = diag(6)
+colnames(Lwbc) = rownames(Lwbc) = cellTypes
+CellPredsDSCFein72 = data.frame(projectWBCnew(DSCOptimFein, DSCmeanmethFein , Lwbc)*100)
+save(CellPredsDSCFein72, file= "Cell Preds DSC Feinberg 72.RData")
+
+#get design matrix for regression
+XDSCFein = model.matrix(~ CD8T + CD4T + NK + Bcell + Gran, data = CellPredsDSCFein72)
+
+#compute the multivariate R2
+Llist = list()
+Llist[[1]] = c(1,0,0,0,0,0)
+MultiDSCFein72 = multiRegMultistat(dat, XDSCFein, Llist)
+
+save(MultiDSCFein72, file = "Feinberg Modified DSC Results 72.RData")
+
+###########################
+#Using Legacy library
+###########################
+
+#subset feinberg data to our library
+legacyOptimFein <- dat[tstats72,]
+
+#subset mean methylation matrix to our library
+legmeanmethFein <- meanmeth[tstats72,]
+
+#get cell proportion estimates
+cellTypes = colnames(legmeanmethFein)
+Lwbc = diag(6)
+colnames(Lwbc) = rownames(Lwbc) = cellTypes
+CellPredslegFein72 = data.frame(projectWBCnew(legacyOptimFein, legmeanmethFein, Lwbc)*100)
+save(CellPredslegFein72, file= "Cell Preds Legacy Feinberg 72.RData")
+
+#get design matrix for regression
+XLegFein = model.matrix(~ CD8T + CD4T + NK + Bcell + Gran, data = CellPredslegFein72)
+
+# compute the multivariate R2
+Llist = list()
+Llist[[1]] = c(1,0,0,0,0,0)
+MultiLegFein72 = multiRegMultistat(dat, XLegFein, Llist)
+
+save(MultiLegFein72, file = "Feinberg Legacy Results 72.RData")
